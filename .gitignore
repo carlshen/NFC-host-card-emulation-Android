@@ -3,3 +3,11 @@
 /.idea/workspace.xml
 .DS_Store
 /build
+/.idea/
+/.idea/compiler.xml
+/.idea/gradle.xml
+/.idea/assetWizardSettings.xml
+/.idea/modules.xml
+/.idea/scopes/
+/.idea/libraries/
+/.idea/copyright/

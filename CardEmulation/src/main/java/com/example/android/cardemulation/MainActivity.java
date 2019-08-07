@@ -19,8 +19,14 @@
 
 package com.example.android.cardemulation;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
-import android.app.FragmentTransaction;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.FragmentTransaction;
+import android.support.v4.content.ContextCompat;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.ViewAnimator;
@@ -50,10 +56,32 @@ public class MainActivity extends SampleActivityBase {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        FragmentTransaction transaction = getFragmentManager().beginTransaction();
-        CardEmulationFragment fragment = new CardEmulationFragment();
-        transaction.replace(R.id.sample_content_fragment, fragment);
+        FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+        CardLogFragment fragment = new CardLogFragment();
+        transaction.add(R.id.sample_content_fragment, fragment, "log");
         transaction.commit();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (Build.VERSION.SDK_INT>=Build.VERSION_CODES.M){
+            if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.WRITE_EXTERNAL_STORAGE)!= PackageManager.PERMISSION_GRANTED){
+                ActivityCompat.requestPermissions(MainActivity.this,new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE},1);
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode){
+            case 1:
+                if (grantResults.length>0&&grantResults[0]!=PackageManager.PERMISSION_GRANTED){
+                    finish();
+                }
+                break;
+        }
     }
 
     @Override

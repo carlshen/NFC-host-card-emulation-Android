@@ -57,6 +57,10 @@ limitations under the License.
         dispatch).
     -->
 
+    <aid-group android:description="@string/paymentGroup" android:category="payment">
+        <aid-filter android:name="a000000632010105" android:description="@string/test"/>
+    </aid-group>
+
     <aid-group android:description="@string/card_title" android:category="other">
         <aid-filter android:name="F222222222"/>
     </aid-group>

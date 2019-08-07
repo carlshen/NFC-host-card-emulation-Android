@@ -15,3 +15,7 @@
 #-keepclassmembers class fqcn.of.javascript.interface.for.webview {
 #   public *;
 #}
+-dontwarn com.jeremyliao.liveeventbus.**
+-keep class com.jeremyliao.liveeventbus.** { *; }
+-keep class android.arch.lifecycle.** { *; }
+-keep class android.arch.core.** { *; }

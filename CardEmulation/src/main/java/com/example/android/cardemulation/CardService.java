@@ -19,15 +19,24 @@ package com.example.android.cardemulation;
 import android.nfc.cardemulation.HostApduService;
 import android.os.Bundle;
 import android.os.Environment;
-import android.widget.Toast;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.Looper;
+import android.os.Message;
+import android.text.TextUtils;
 
 import com.example.android.common.logger.Log;
+import com.jeremyliao.liveeventbus.LiveEventBus;
 
-import java.io.BufferedReader;
+import org.simalliance.openmobileapi.Channel;
+import org.simalliance.openmobileapi.Reader;
+import org.simalliance.openmobileapi.SEService;
+import org.simalliance.openmobileapi.Session;
+
 import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.Arrays;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * This is a sample APDU Service which demonstrates how to interface with the card emulation support
@@ -49,6 +58,8 @@ public class CardService extends HostApduService {
     private static final String TAG = "CardService";
     // AID for our loyalty card service.
     private static final String SAMPLE_LOYALTY_CARD_AID = "F222222222";
+    // AID for our select card service.
+    private static String SELECT_CARD_AID = SAMPLE_LOYALTY_CARD_AID;
     // ISO-DEP command HEADER for selecting an AID.
     // Format: [Class | Instruction | Parameter 1 | Parameter 2]
     private static final String SELECT_APDU_HEADER = "00A40400";
@@ -66,6 +77,50 @@ public class CardService extends HostApduService {
     File file = new File(sdcard,"file.txt");
     StringBuilder text = new StringBuilder();
     int pointer;
+    private HandlerThread apduHandlerThread = null;
+    private ApduHandler apduHandler = null;
+    private static final int SEND_DATA_APDU = 1;
+    public static final int REPLY_DATA_APDU = 2;
+    SEService _service = null;
+    Session _session = null;
+    Channel _channel = null;
+    SEServiceCallback callback = null;
+    Handler handler = new Handler();
+    protected volatile static boolean ese_service = false;
+    ConcurrentLinkedQueue<String> conLinkedQueue = new ConcurrentLinkedQueue<>();
+    CountDownLatch latch = new CountDownLatch(1);
+
+    class  ApduHandler extends Handler {
+        ApduHandler(Looper looper) {
+            super(looper);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            super.handleMessage(msg);
+            if (msg == null) {
+                return;
+            }
+            switch (msg.what) {
+                case SEND_DATA_APDU:
+                    sendApduData();
+                    break;
+            }
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (apduHandler != null) {
+            apduHandler.removeCallbacksAndMessages(null);
+            apduHandler = null;
+        }
+        if (apduHandlerThread != null) {
+            apduHandlerThread.quitSafely();
+            apduHandlerThread = null;
+        }
+    }
 
     /**
      * Called if the connection to the NFC card is lost, in order to let the application know the
@@ -75,7 +130,22 @@ public class CardService extends HostApduService {
      * @param reason Either DEACTIVATION_LINK_LOSS or DEACTIVATION_DESELECTED
      */
     @Override
-    public void onDeactivated(int reason) { }
+    public void onDeactivated(int reason) {
+        Log.i(TAG, "onDeactivated reason: " + reason);
+        if (_channel != null) {
+            _channel.close();
+            _channel = null;
+        }
+        if (_session != null) {
+            _session.close();
+            _session = null;
+        }
+        if (_service != null) {
+            _service.shutdown();
+            _service = null;
+        }
+        ese_service = false;
+    }
 
     /**
      * This method will be called when a command APDU has been received from a remote device. A
@@ -100,33 +170,160 @@ public class CardService extends HostApduService {
     @Override
     public byte[] processCommandApdu(byte[] commandApdu, Bundle extras) {
         Log.i(TAG, "Received APDU: " + ByteArrayToHexString(commandApdu));
-        // If the APDU matches the SELECT AID command for this service,
-        // send the loyalty card account number, followed by a SELECT_OK status trailer (0x9000).
-        if (Arrays.equals(SELECT_APDU, commandApdu)) {
-            String account = "some string random data some string random data some string random data some string random data some string random data some string random data some string random data some string random data some string data some string random data some string";
-            byte[] accountBytes = account.getBytes();
-            Log.i(TAG, "Sending account number: " + account);
-            readFromFile();
-            return ConcatArrays(accountBytes, SELECT_OK_SW);
-        } else if ((Arrays.equals(GET_DATA_APDU, commandApdu))) {
-            String stringToSend;
-            try {
-                stringToSend = text.toString().substring(pointer, pointer + 200);
-            } catch (IndexOutOfBoundsException e) {
-                Toast.makeText(this, "Reached the end of the file", Toast.LENGTH_SHORT).show();
-                stringToSend = "END";
-            }
-            pointer += 200;byte[] accountBytes = stringToSend.getBytes();
-            Log.i(TAG, "Sending substring, pointer : " + pointer + " , " + stringToSend);
-            return ConcatArrays(accountBytes, SELECT_OK_SW);
+        if (apduHandlerThread == null) {
+            apduHandlerThread = new HandlerThread("CardService");
+            apduHandlerThread.start();
+            apduHandler = new ApduHandler(apduHandlerThread.getLooper());
         }
+        if (commandApdu == null || commandApdu.length < 2) {
+            return null;
+        }
+        // queue the apdu, send message to apdu thread
+        conLinkedQueue.offer(ByteArrayToHexString(commandApdu));
+        if (ese_service) {
+            apduHandler.sendEmptyMessage(SEND_DATA_APDU);
+        } else {
+            // firstly need connect se service
+            ConnectSeService();
+            apduHandler.sendEmptyMessageDelayed(SEND_DATA_APDU, 100);
+        }
+        // just respond null or select id, then respond result after process
+        if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
+            LiveEventBus.get()
+                    .with(CardLogFragment.KEY_TEST_OBSERVE)
+                    .post(ByteArrayToHexString(commandApdu));
+            LiveEventBus.get()
+                    .with(CardLogFragment.KEY_TEST_OBSERVE)
+                    .post("363232323232323230303030303030319000");
+            return HexStringToByteArray("363232323232323230303030303030319000");
+        }
+        return null;
+    }
 
-        else {
-                return UNKNOWN_CMD_SW;
-
+    /**
+     * Callback interface if informs that this SEService is connected to the SmartCardService
+     */
+    public class SEServiceCallback implements SEService.CallBack {
+        public void serviceConnected(SEService service) {
+            Log.i(TAG, "serviceConnected: ");
+            _service = service;
+            ese_service = true;
+            latch.countDown();
         }
     }
 
+    private void ConnectSeService() {
+        Log.i(TAG, "ConnectSeService: ");
+        if (callback == null) {
+            callback = new SEServiceCallback();
+        }
+        if (!ese_service) {
+            Log.i(TAG, "ConnectSeService firstly need connect with SeService.");
+            new SEService(this, callback);
+        }
+    }
+
+    private static final byte[] ISD_AID = new byte[] { (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00 };
+    private void sendApduData() {
+        Log.i(TAG, "sendApduData: ");
+        try {
+            latch.await();
+        } catch (InterruptedException arg2) {
+            arg2.printStackTrace();
+        }
+        if (conLinkedQueue.isEmpty()) {
+            Log.e(TAG, "Why queue is empty? Maybe just end. ");
+            return;
+        }
+        byte[] commandApdu = HexStringToByteArray(conLinkedQueue.poll());
+        if (commandApdu == null) {
+            Log.e(TAG, "Why command Apdu is empty?");
+            return;
+        }
+        if (_service == null || !_service.isConnected()) {
+            Log.e(TAG, "Why _service is not connected?");
+            return;
+        }
+        Reader[] readers = _service.getReaders();
+        if (readers == null || readers.length < 1) {
+            Log.e(TAG, "Why readers is empty?");
+            return;
+        }
+        for (Reader reader : readers) {
+            if (reader == null || reader.getName() == null) {
+                Log.e(TAG, "Why reader is empty?");
+                continue;
+            }
+            if (reader.getName().startsWith("SIM")) {
+                Log.i(TAG, "process reader name = " + reader.getName());
+                if (_session == null || _session.isClosed()) {
+                    try {
+                        _session = reader.openSession();
+                    } catch (Exception arg3) {
+                        arg3.printStackTrace();
+                    }
+                }
+                if (_session == null || _session.isClosed()) {
+                    Log.e(TAG, "Why _session is empty?");
+                    continue;
+                }
+//                try {
+//                    byte[] atr = _session.getATR();
+//                    Log.i(TAG, "process getATR = " + ByteArrayToHexString(atr));
+//                } catch (Exception arg2) {
+//                    arg2.printStackTrace();
+//                }
+                if (_channel == null || _channel.isClosed()) {
+                    if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
+                        SELECT_CARD_AID = ByteArrayToHexString(commandApdu).substring(10);
+                        if (TextUtils.isEmpty(SELECT_CARD_AID)) {
+                            Log.e(TAG, "Why SELECT_CARD_AID is empty?");
+                        } else {
+                            Log.i(TAG, "process SELECT_CARD_AID = " + SELECT_CARD_AID);
+                        }
+                    }
+                    // just use test aid for channel
+                    Log.i(TAG, "process openLogicalChannel = " + ByteArrayToHexString(ISD_AID));
+                    try {
+                        _channel = _session.openLogicalChannel(ISD_AID);
+                    } catch (Exception arg5) {
+                        arg5.printStackTrace();
+                    }
+                    if (_channel == null || _channel.isClosed()) {
+                        Log.e(TAG, "Why _channel is empty?");
+                        continue;
+                    } else {
+                        Log.i(TAG, "open channel ok, _channel = " + _channel.toString());
+                    }
+                }
+                if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
+                    Log.i(TAG, "Selection already processed on above step.");
+                } else {
+                    try {
+                        Log.i(TAG, "process command = " + ByteArrayToHexString(commandApdu));
+                        LiveEventBus.get()
+                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .post(ByteArrayToHexString(commandApdu));
+                        final byte[] rsp = _channel.transmit(commandApdu);
+                        Log.i(TAG, "process response = " + ByteArrayToHexString(rsp));
+                        handler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                Log.i(TAG, "process sendResponseApdu rsp = " + ByteArrayToHexString(rsp));
+                                sendResponseApdu(rsp);
+                            }
+                        });
+                        LiveEventBus.get()
+                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .post(ByteArrayToHexString(rsp));
+                    } catch (Exception arg6) {
+                        arg6.printStackTrace();
+                    }
+                }
+                break;
+            }
+        }
+    }
 
     /**
      * Build APDU for SELECT AID command. This command indicates which service a reader is
@@ -137,8 +334,7 @@ public class CardService extends HostApduService {
      */
     public static byte[] BuildSelectApdu(String aid) {
         // Format: [CLASS | INSTRUCTION | PARAMETER 1 | PARAMETER 2 | LENGTH | DATA]
-        return HexStringToByteArray(SELECT_APDU_HEADER + String.format("%02X",
-                aid.length() / 2) + aid);
+        return HexStringToByteArray(SELECT_APDU_HEADER + String.format("%02X", aid.length() / 2) + aid);
     }
 
     /**
@@ -212,18 +408,4 @@ public class CardService extends HostApduService {
         return result;
     }
 
-    private void readFromFile() {
-        try {
-            BufferedReader br = new BufferedReader(new FileReader(file));
-            String line;
-
-            while ((line = br.readLine()) != null) {
-                text.append(line);
-                text.append('\n');
-            }
-        }
-        catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 }
