@@ -18,7 +18,6 @@ package com.example.android.cardemulation;
 
 import android.nfc.cardemulation.HostApduService;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
@@ -33,7 +32,6 @@ import org.simalliance.openmobileapi.Reader;
 import org.simalliance.openmobileapi.SEService;
 import org.simalliance.openmobileapi.Session;
 
-import java.io.File;
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
@@ -56,8 +54,10 @@ import java.util.concurrent.CountDownLatch;
  */
 public class CardService extends HostApduService {
     private static final String TAG = "CardService";
+    // next is test aid
+    private static final byte[] ISD_AID = new byte[] { (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00 };
     // AID for our loyalty card service.
-    private static final String SAMPLE_LOYALTY_CARD_AID = "F222222222";
+    private static final String SAMPLE_LOYALTY_CARD_AID = "A00000015141434C00";
     // AID for our select card service.
     private static String SELECT_CARD_AID = SAMPLE_LOYALTY_CARD_AID;
     // ISO-DEP command HEADER for selecting an AID.
@@ -72,11 +72,6 @@ public class CardService extends HostApduService {
     private static final byte[] SELECT_APDU = BuildSelectApdu(SAMPLE_LOYALTY_CARD_AID);
     private static final byte[] GET_DATA_APDU = BuildGetDataApdu();
 
-    /*File IO Stuffs*/
-    File sdcard = Environment.getExternalStorageDirectory();
-    File file = new File(sdcard,"file.txt");
-    StringBuilder text = new StringBuilder();
-    int pointer;
     private HandlerThread apduHandlerThread = null;
     private ApduHandler apduHandler = null;
     private static final int SEND_DATA_APDU = 1;
@@ -223,7 +218,6 @@ public class CardService extends HostApduService {
         }
     }
 
-    private static final byte[] ISD_AID = new byte[] { (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00 };
     private void sendApduData() {
         Log.i(TAG, "sendApduData: ");
         try {
@@ -278,14 +272,14 @@ public class CardService extends HostApduService {
                         SELECT_CARD_AID = ByteArrayToHexString(commandApdu).substring(10);
                         if (TextUtils.isEmpty(SELECT_CARD_AID)) {
                             Log.e(TAG, "Why SELECT_CARD_AID is empty?");
+                            SELECT_CARD_AID = SAMPLE_LOYALTY_CARD_AID;
                         } else {
                             Log.i(TAG, "process SELECT_CARD_AID = " + SELECT_CARD_AID);
                         }
                     }
-                    // just use test aid for channel
-                    Log.i(TAG, "process openLogicalChannel = " + ByteArrayToHexString(ISD_AID));
                     try {
-                        _channel = _session.openLogicalChannel(ISD_AID);
+//                        _channel = _session.openLogicalChannel(ISD_AID);
+                        _channel = _session.openLogicalChannel(HexStringToByteArray(SELECT_CARD_AID));
                     } catch (Exception arg5) {
                         arg5.printStackTrace();
                     }
@@ -293,7 +287,7 @@ public class CardService extends HostApduService {
                         Log.e(TAG, "Why _channel is empty?");
                         continue;
                     } else {
-                        Log.i(TAG, "open channel ok, _channel = " + _channel.toString());
+                        Log.i(TAG, "open channel ok, response = " + ByteArrayToHexString(_channel.getSelectResponse()));
                     }
                 }
                 if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
