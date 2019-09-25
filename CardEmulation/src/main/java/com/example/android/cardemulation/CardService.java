@@ -57,7 +57,8 @@ public class CardService extends HostApduService {
     // next is test aid
     private static final byte[] ISD_AID = new byte[] { (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00 };
     // AID for our loyalty card service.
-    private static final String SAMPLE_LOYALTY_CARD_AID = "A00000015141434C00";
+//    private static final String SAMPLE_LOYALTY_CARD_AID = "A00000015141434C00";
+    private static final String SAMPLE_LOYALTY_CARD_AID = "A0000000031010";
     // AID for our select card service.
     private static String SELECT_CARD_AID = SAMPLE_LOYALTY_CARD_AID;
     // ISO-DEP command HEADER for selecting an AID.
@@ -183,13 +184,13 @@ public class CardService extends HostApduService {
             apduHandler.sendEmptyMessageDelayed(SEND_DATA_APDU, 100);
         }
         // just respond null or select id, then respond result after process
-        if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
+        if ((commandApdu[1] == (byte)0xa4)/* && (commandApdu[4] == (byte)0x06)*/) {
             LiveEventBus.get()
                     .with(CardLogFragment.KEY_TEST_OBSERVE)
                     .post(ByteArrayToHexString(commandApdu));
-            LiveEventBus.get()
-                    .with(CardLogFragment.KEY_TEST_OBSERVE)
-                    .post("363232323232323230303030303030319000");
+//            LiveEventBus.get()
+//                    .with(CardLogFragment.KEY_TEST_OBSERVE)
+//                    .post("363232323232323230303030303030319000");
             return HexStringToByteArray("363232323232323230303030303030319000");
         }
         return null;
@@ -243,11 +244,13 @@ public class CardService extends HostApduService {
             Log.e(TAG, "Why readers is empty?");
             return;
         }
+        Log.i(TAG, "process readers.length = " + readers.length);
         for (Reader reader : readers) {
             if (reader == null || reader.getName() == null) {
                 Log.e(TAG, "Why reader is empty?");
                 continue;
             }
+//            Log.i(TAG, "process reader.getName() = " + reader.getName());
             if (reader.getName().startsWith("SIM")) {
                 Log.i(TAG, "process reader name = " + reader.getName());
                 if (_session == null || _session.isClosed()) {
@@ -255,6 +258,9 @@ public class CardService extends HostApduService {
                         _session = reader.openSession();
                     } catch (Exception arg3) {
                         arg3.printStackTrace();
+                        LiveEventBus.get()
+                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .post(arg3.getMessage());
                     }
                 }
                 if (_session == null || _session.isClosed()) {
@@ -268,7 +274,7 @@ public class CardService extends HostApduService {
 //                    arg2.printStackTrace();
 //                }
                 if (_channel == null || _channel.isClosed()) {
-                    if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
+                    if ((commandApdu[1] == (byte)0xa4)/* && (commandApdu[4] == (byte)0x06)*/) {
                         SELECT_CARD_AID = ByteArrayToHexString(commandApdu).substring(10);
                         if (TextUtils.isEmpty(SELECT_CARD_AID)) {
                             Log.e(TAG, "Why SELECT_CARD_AID is empty?");
@@ -278,19 +284,25 @@ public class CardService extends HostApduService {
                         }
                     }
                     try {
-//                        _channel = _session.openLogicalChannel(ISD_AID);
+//                        _channel = _session.openBasicChannel(HexStringToByteArray(SELECT_CARD_AID));
                         _channel = _session.openLogicalChannel(HexStringToByteArray(SELECT_CARD_AID));
                     } catch (Exception arg5) {
                         arg5.printStackTrace();
+                        LiveEventBus.get()
+                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .post(arg5.getMessage());
                     }
                     if (_channel == null || _channel.isClosed()) {
                         Log.e(TAG, "Why _channel is empty?");
                         continue;
                     } else {
+                        LiveEventBus.get()
+                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .post(ByteArrayToHexString(_channel.getSelectResponse()));
                         Log.i(TAG, "open channel ok, response = " + ByteArrayToHexString(_channel.getSelectResponse()));
                     }
                 }
-                if (commandApdu[0] == (byte)0 && commandApdu[1] == (byte)0xa4) {
+                if ((commandApdu[1] == (byte)0xa4)/* && (commandApdu[4] == (byte)0x06)*/) {
                     Log.i(TAG, "Selection already processed on above step.");
                 } else {
                     try {
