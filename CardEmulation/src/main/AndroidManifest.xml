@@ -28,8 +28,7 @@
 
     <application android:allowBackup="true"
         android:label="@string/app_name"
-        android:icon="@drawable/ic_launcher"
-        android:theme="@style/AppTheme">
+        android:icon="@drawable/ic_launcher">
         <uses-library android:name="org.simalliance.openmobileapi" android:required="true"/>
 
         <!-- Service for handling communication with NFC terminal. -->
