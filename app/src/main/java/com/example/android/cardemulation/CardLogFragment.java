@@ -20,7 +20,6 @@ import com.jeremyliao.liveeventbus.LiveEventBus;
 
 public class CardLogFragment extends Fragment {
 
-    public static final String KEY_TEST_OBSERVE = "key_test_observe";
     TextView _textview = null;
     ScrollView _scrollview = null;
 
@@ -43,7 +42,7 @@ public class CardLogFragment extends Fragment {
     public void onAttach(Context context) {
         super.onAttach(context);
         LiveEventBus.get()
-                .with(KEY_TEST_OBSERVE, String.class)
+                .with(CardService.KEY_TEST_OBSERVE, String.class)
                 .observe(this, new Observer<String>() {
                     @Override
                     public void onChanged(@Nullable String s) {

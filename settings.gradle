@@ -1,1 +1,1 @@
-include ':app', ':app', ':CardEmulation', ':CardReader'
+include ':app', ':CardEmulation', ':CardReader'

@@ -16,8 +16,6 @@
 <resources>
     <string name="paymentGroup">Payment Group</string>
     <string name="test">testLog</string>
-    <string name="sample_show_log">Show Log</string>
-    <string name="sample_hide_log">Hide Log</string>
     <string name="service_name">Emulation Service</string>
     <string name="card_title">DTU</string>
     <string name="large_payload">"IEEE DTU Orientation

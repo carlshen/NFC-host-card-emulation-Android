@@ -54,6 +54,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public class CardService extends HostApduService {
     private static final String TAG = "CardService";
+    public static final String KEY_TEST_OBSERVE = "key_test_observe";
     // next is test aid
     private static final byte[] ISD_AID = new byte[] { (byte) 0xA0, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00 };
     // AID for our loyalty card service.
@@ -186,7 +187,7 @@ public class CardService extends HostApduService {
         // just respond null or select id, then respond result after process
         if ((commandApdu[1] == (byte)0xa4)/* && (commandApdu[4] == (byte)0x06)*/) {
             LiveEventBus.get()
-                    .with(CardLogFragment.KEY_TEST_OBSERVE)
+                    .with(KEY_TEST_OBSERVE)
                     .post(ByteArrayToHexString(commandApdu));
 //            LiveEventBus.get()
 //                    .with(CardLogFragment.KEY_TEST_OBSERVE)
@@ -237,11 +238,46 @@ public class CardService extends HostApduService {
         }
         if (_service == null || !_service.isConnected()) {
             Log.e(TAG, "Why _service is not connected?");
+            LiveEventBus.get()
+                    .with(KEY_TEST_OBSERVE)
+                    .post("Why _service is not connected?");
+            return;
+        }
+        if (_channel != null && !_channel.isClosed()) {
+            if ((commandApdu[1] == (byte)0xa4)/* && (commandApdu[4] == (byte)0x06)*/) {
+                Log.i(TAG, "Selection already processed on above step.");
+                LiveEventBus.get()
+                        .with(KEY_TEST_OBSERVE)
+                        .post("Selection already processed on above step.");
+            } else {
+                try {
+                    Log.i(TAG, "process command = " + ByteArrayToHexString(commandApdu));
+                    LiveEventBus.get()
+                            .with(KEY_TEST_OBSERVE)
+                            .post(ByteArrayToHexString(commandApdu));
+                    final byte[] rsp = _channel.transmit(commandApdu);
+                    Log.i(TAG, "process response = " + ByteArrayToHexString(rsp));
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            sendResponseApdu(rsp);
+                        }
+                    });
+                    LiveEventBus.get()
+                            .with(KEY_TEST_OBSERVE)
+                            .post(ByteArrayToHexString(rsp));
+                } catch (Exception arg6) {
+                    arg6.printStackTrace();
+                }
+            }
             return;
         }
         Reader[] readers = _service.getReaders();
         if (readers == null || readers.length < 1) {
             Log.e(TAG, "Why readers is empty?");
+            LiveEventBus.get()
+                    .with(KEY_TEST_OBSERVE)
+                    .post("Why readers is not connected?");
             return;
         }
         Log.i(TAG, "process readers.length = " + readers.length);
@@ -259,7 +295,7 @@ public class CardService extends HostApduService {
                     } catch (Exception arg3) {
                         arg3.printStackTrace();
                         LiveEventBus.get()
-                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .with(KEY_TEST_OBSERVE)
                                 .post(arg3.getMessage());
                     }
                 }
@@ -289,7 +325,7 @@ public class CardService extends HostApduService {
                     } catch (Exception arg5) {
                         arg5.printStackTrace();
                         LiveEventBus.get()
-                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .with(KEY_TEST_OBSERVE)
                                 .post(arg5.getMessage());
                     }
                     if (_channel == null || _channel.isClosed()) {
@@ -297,7 +333,7 @@ public class CardService extends HostApduService {
                         continue;
                     } else {
                         LiveEventBus.get()
-                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .with(KEY_TEST_OBSERVE)
                                 .post(ByteArrayToHexString(_channel.getSelectResponse()));
                         Log.i(TAG, "open channel ok, response = " + ByteArrayToHexString(_channel.getSelectResponse()));
                     }
@@ -308,7 +344,7 @@ public class CardService extends HostApduService {
                     try {
                         Log.i(TAG, "process command = " + ByteArrayToHexString(commandApdu));
                         LiveEventBus.get()
-                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .with(KEY_TEST_OBSERVE)
                                 .post(ByteArrayToHexString(commandApdu));
                         final byte[] rsp = _channel.transmit(commandApdu);
                         Log.i(TAG, "process response = " + ByteArrayToHexString(rsp));
@@ -320,7 +356,7 @@ public class CardService extends HostApduService {
                             }
                         });
                         LiveEventBus.get()
-                                .with(CardLogFragment.KEY_TEST_OBSERVE)
+                                .with(KEY_TEST_OBSERVE)
                                 .post(ByteArrayToHexString(rsp));
                     } catch (Exception arg6) {
                         arg6.printStackTrace();
